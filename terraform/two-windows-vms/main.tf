@@ -9,13 +9,12 @@ locals {
   }
 
   # Flatten vms -> data_disks into one map keyed "<vm>-<label>", so for_each can
-  # create one managed disk and one attachment per entry. The list index becomes the LUN.
+  # create one managed disk and one attachment per entry.
   data_disks = merge([
     for vm_name, vm in var.vms : {
-      for lun, disk in vm.data_disks : "${vm_name}-${lower(disk.label)}" => merge(disk, {
+      for disk in vm.data_disks : "${vm_name}-${lower(disk.label)}" => merge(disk, {
         vm_name = vm_name
         zone    = vm.zone
-        lun     = lun
       })
     }
   ]...)
@@ -202,8 +201,8 @@ resource "azurerm_virtual_machine_run_command" "disk_setup" {
   parameter {
     name = "DiskLayoutBase64"
     value = base64encode(jsonencode([
-      for lun, d in each.value.data_disks : {
-        lun              = lun
+      for d in each.value.data_disks : {
+        lun              = d.lun
         label            = d.label
         driveLetter      = d.drive_letter
         allocationUnitKb = d.allocation_unit_kb

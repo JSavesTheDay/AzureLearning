@@ -3,6 +3,7 @@
 #
 # Disk sizes are POC minimums (4 GiB standard/premium SSD, 1 GiB Premium SSD v2).
 # Caching and allocation units follow Microsoft's SQL Server on Azure VM guidance.
+# LUNs are sequential in drive-letter order (D: = 0, E: = 1, ...).
 
 vms = {
   web1 = {
@@ -15,7 +16,7 @@ vms = {
     }
 
     data_disks = [
-      { label = "Data", drive_letter = "D", size_gb = 4, storage_account_type = "StandardSSD_LRS" },
+      { lun = 0, label = "Data", drive_letter = "D", size_gb = 4, storage_account_type = "StandardSSD_LRS" },
     ]
   }
 
@@ -29,11 +30,11 @@ vms = {
     }
 
     data_disks = [
-      { label = "Application", drive_letter = "D", size_gb = 4, storage_account_type = "StandardSSD_LRS" },
-      { label = "SQLTemp", drive_letter = "E", size_gb = 4, storage_account_type = "StandardSSD_LRS", caching = "ReadOnly", allocation_unit_kb = 64 },
-      { label = "SqlData", drive_letter = "F", size_gb = 1, storage_account_type = "PremiumV2_LRS", allocation_unit_kb = 64 },
-      { label = "SqlLogs", drive_letter = "G", size_gb = 1, storage_account_type = "PremiumV2_LRS", allocation_unit_kb = 64 },
-      { label = "SqlBackups", drive_letter = "H", size_gb = 4, storage_account_type = "StandardSSD_LRS", allocation_unit_kb = 64 },
+      { lun = 0, label = "Application", drive_letter = "D", size_gb = 4, storage_account_type = "StandardSSD_LRS" },
+      { lun = 1, label = "SQLTemp", drive_letter = "E", size_gb = 4, storage_account_type = "StandardSSD_LRS", caching = "ReadOnly", allocation_unit_kb = 64 },
+      { lun = 2, label = "SqlData", drive_letter = "F", size_gb = 1, storage_account_type = "PremiumV2_LRS", allocation_unit_kb = 64 },
+      { lun = 3, label = "SqlLogs", drive_letter = "G", size_gb = 1, storage_account_type = "PremiumV2_LRS", allocation_unit_kb = 64 },
+      { lun = 4, label = "SqlBackups", drive_letter = "H", size_gb = 4, storage_account_type = "StandardSSD_LRS", allocation_unit_kb = 64 },
     ]
   }
 }

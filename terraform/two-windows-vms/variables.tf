@@ -44,8 +44,9 @@ variable "auto_shutdown_timezone" {
   default     = "Central Standard Time"
 }
 
-# One entry per VM, keyed by VM name. Data disks are attached in list order:
-# the list index becomes the LUN, which the setup script uses to find each disk in Windows.
+# One entry per VM, keyed by VM name. Each data disk sets its LUN explicitly, so
+# reordering or inserting disks never renumbers others. The setup script uses
+# the LUN to find each disk in Windows.
 variable "vms" {
   description = "VMs to create, keyed by VM name."
   type = map(object({
@@ -58,6 +59,7 @@ variable "vms" {
     })
 
     data_disks = optional(list(object({
+      lun                  = number # 0-63; convention here: sequential in drive-letter order
       label                = string # NTFS volume label, also used in the Azure disk name
       drive_letter         = string
       size_gb              = number
@@ -86,6 +88,15 @@ variable "vms" {
       length(distinct([for d in vm.data_disks : lower(d.label)])) == length(vm.data_disks)
     ])
     error_message = "Drive letters and labels must be unique within each VM."
+  }
+
+  validation {
+    condition = alltrue([
+      for vm in values(var.vms) :
+      length(distinct([for d in vm.data_disks : d.lun])) == length(vm.data_disks) &&
+      alltrue([for d in vm.data_disks : d.lun >= 0 && d.lun <= 63 && floor(d.lun) == d.lun])
+    ])
+    error_message = "Each data disk needs a unique whole-number lun from 0 to 63 within its VM."
   }
 
   validation {

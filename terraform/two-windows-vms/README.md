@@ -23,6 +23,7 @@ CD/DVD drives move to Z:. Both VMs are in zone 1.
 | Zone 1 | Premium SSD v2 attaches only to zonal VMs in East US 2. A zonal VM's disks must be in the same zone. |
 | Caching: SQLTemp ReadOnly; SqlData, SqlLogs, others None | Microsoft guidance: logs None, tempdb on a data disk ReadOnly. Premium SSD v2 doesn't support host caching. |
 | 64 KB NTFS allocation units on SQL volumes | Microsoft guidance for SQL data, log and tempdb files on data disks |
+| Explicit `lun` per disk in tfvars | A disk's LUN is part of its identity. If list position decided it, inserting a disk would renumber (detach and reattach) every disk after it. |
 | One-time Run Command, LUN-based | Runs at deploy only, never at boot. The LUN is the identifier Azure and Windows share. SCSI sizes only: NVMe (v6) sizes number disks differently. |
 
 ## Run
@@ -58,7 +59,7 @@ terraform destroy
 
 ## Adding or changing VMs
 
-Edit `terraform.tfvars`. Data disks attach in list order (index = LUN), so **append** new disks to the end of a list. Inserting a disk in the middle shifts the LUNs of the disks after it, and Terraform would then detach and reattach them.
+Edit `terraform.tfvars`. Each data disk sets its `lun` explicitly (0–63, unique per VM). The convention is sequential in drive-letter order. Because LUNs are explicit, list order doesn't matter, and adding a disk never renumbers the others. Changing an *existing* disk's LUN detaches and reattaches it, so treat LUNs as fixed once deployed.
 
 ## Notes
 
