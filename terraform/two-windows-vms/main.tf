@@ -187,7 +187,8 @@ resource "azurerm_virtual_machine_data_disk_attachment" "data" {
 # resource is created, and again only if the script or parameters change.
 # It never runs at boot, so it can't compete with hardening scripts.
 resource "azurerm_virtual_machine_run_command" "disk_setup" {
-  for_each = var.vms
+  # Conditional for_each: an empty map creates nothing, so this toggles the resource.
+  for_each = var.run_disk_setup ? var.vms : {}
 
   name               = "initialize-data-disks"
   location           = azurerm_resource_group.this.location

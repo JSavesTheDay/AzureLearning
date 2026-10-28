@@ -26,6 +26,12 @@ variable "allowed_rdp_source_ip" {
   }
 }
 
+variable "run_disk_setup" {
+  description = "Run the one-time in-guest disk setup. Set false to deploy first and inspect the raw drive state."
+  type        = bool
+  default     = true
+}
+
 variable "optical_drive_letter" {
   description = "Drive letter that any CD/DVD drive is moved to, freeing D: and later letters for data disks."
   type        = string
