@@ -23,6 +23,7 @@ CD/DVD drives move to Z:. Both VMs are in zone 1.
 | Zone 1 | Premium SSD v2 attaches only to zonal VMs in East US 2. A zonal VM's disks must be in the same zone. |
 | Caching: SQLTemp ReadOnly; SqlData, SqlLogs, others None | Microsoft guidance: logs None, tempdb on a data disk ReadOnly. Premium SSD v2 doesn't support host caching. |
 | 64 KB NTFS allocation units on SQL volumes | Microsoft guidance for SQL data, log and tempdb files on data disks |
+| Premium SSD v2 `iops` / `mbps` inputs | Performance is set separately from size. Validation applies Azure's rules: IOPS from 3,000 up to 500 per GiB (max 80,000); MB/s from 125 up to 0.25 per IOPS (max 2,000), fixed at 125 for disks of 6 GiB or less. Also check the VM's own uncached limit (`B4als_v2`: 6,400 IOPS / 145 MB/s for all data disks combined; check with `az vm list-skus --size <size>` and look for `UncachedDisk*`), because disk performance above that is wasted. |
 | Explicit `lun` per disk in tfvars | A disk's LUN is part of its identity. If list position decided it, inserting a disk would renumber (detach and reattach) every disk after it. |
 | One-time Run Command, LUN-based | Runs at deploy only, never at boot. The LUN is the identifier Azure and Windows share. SCSI sizes only: NVMe (v6) sizes number disks differently. |
 

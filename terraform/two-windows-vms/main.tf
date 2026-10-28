@@ -166,8 +166,10 @@ resource "azurerm_managed_disk" "data" {
   disk_size_gb         = each.value.size_gb
   tags                 = local.tags
 
-  # Premium SSD v2 sets performance separately from size. Leaving IOPS and
-  # throughput unset gives the free baseline (3,000 IOPS / 125 MB/s).
+  # Premium SSD v2 sets performance separately from size. null (unset in
+  # tfvars) gives the free baseline (3,000 IOPS / 125 MB/s).
+  disk_iops_read_write = each.value.iops
+  disk_mbps_read_write = each.value.mbps
 }
 
 resource "azurerm_virtual_machine_data_disk_attachment" "data" {

@@ -66,6 +66,11 @@ variable "vms" {
       storage_account_type = string
       caching              = optional(string, "None")
       allocation_unit_kb   = optional(number, 4) # use 64 for SQL Server data, log, tempdb, and backup volumes
+
+      # Premium SSD v2 only: performance is set independently of size.
+      # Unset = free baseline (3,000 IOPS / 125 MB/s). Higher values add cost.
+      iops = optional(number)
+      mbps = optional(number)
     })), [])
   }))
 
@@ -122,5 +127,42 @@ variable "vms" {
       for vm in values(var.vms) : [for d in vm.data_disks : contains([4, 8, 16, 32, 64], d.allocation_unit_kb)]
     ]))
     error_message = "allocation_unit_kb must be 4, 8, 16, 32, or 64."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for vm in values(var.vms) : [
+        for d in vm.data_disks : (d.iops == null && d.mbps == null) || d.storage_account_type == "PremiumV2_LRS"
+      ]
+    ]))
+    error_message = "iops and mbps can only be set on PremiumV2_LRS disks."
+  }
+
+  # Premium SSD v2 IOPS: 3,000 baseline; max = 500 per GiB (never below 3,000), capped at 80,000.
+  # coalesce() substitutes the baseline for unset values, so no comparison ever sees null.
+  validation {
+    condition = alltrue(flatten([
+      for vm in values(var.vms) : [
+        for d in vm.data_disks :
+        floor(coalesce(d.iops, 3000)) == coalesce(d.iops, 3000) &&
+        coalesce(d.iops, 3000) >= 3000 &&
+        coalesce(d.iops, 3000) <= min(80000, max(3000, 500 * d.size_gb))
+      ]
+    ]))
+    error_message = "Premium SSD v2 iops must be a whole number from 3000 to min(80000, max(3000, 500 x size_gb))."
+  }
+
+  # Premium SSD v2 throughput: 125 MB/s baseline. Disks of 6 GiB or less stay at 125.
+  # Larger disks allow up to 0.25 MB/s per provisioned IOPS, capped at 2,000.
+  validation {
+    condition = alltrue(flatten([
+      for vm in values(var.vms) : [
+        for d in vm.data_disks :
+        floor(coalesce(d.mbps, 125)) == coalesce(d.mbps, 125) &&
+        coalesce(d.mbps, 125) >= 125 &&
+        coalesce(d.mbps, 125) <= (d.size_gb <= 6 ? 125 : min(2000, max(125, 0.25 * coalesce(d.iops, 3000))))
+      ]
+    ]))
+    error_message = "Premium SSD v2 mbps must be a whole number from 125 up to 0.25 x iops (max 2000); disks of 6 GiB or less are fixed at 125."
   }
 }
