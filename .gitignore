@@ -9,6 +9,8 @@ Thumbs.db
 *.env
 local.settings.json
 *.tfvars
+# Exception: terraform.tfvars holds non-secret inventory (VM sizes, disks) and is committed
+!terraform.tfvars
 *.pfx
 
 # Terraform / Bicep output
@@ -19,3 +21,4 @@ local.settings.json
 bin/
 obj/
 node_modules/
+tfplan
