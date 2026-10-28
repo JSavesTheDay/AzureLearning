@@ -1,0 +1,21 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# Secrets and local settings - never commit these
+.env
+*.env
+local.settings.json
+*.tfvars
+*.pfx
+
+# Terraform / Bicep output
+.terraform/
+*.tfstate*
+
+# Build output
+bin/
+obj/
+node_modules/
