@@ -38,8 +38,6 @@ vms = {
         drive_letter         = "D"
         size_gb              = 4
         storage_account_type = "StandardSSD_LRS"
-        caching              = "None"
-        allocation_unit_kb   = 4 # general-purpose files: NTFS default
       },
       {
         # tempdb on a dedicated managed disk (no temp-disk VM size):
@@ -62,7 +60,6 @@ vms = {
         drive_letter         = "F"
         size_gb              = 1
         storage_account_type = "PremiumV2_LRS"
-        caching              = "None"
         allocation_unit_kb   = 64
         iops                 = 3000
         mbps                 = 125
@@ -74,7 +71,6 @@ vms = {
         drive_letter         = "G"
         size_gb              = 1
         storage_account_type = "PremiumV2_LRS"
-        caching              = "None"
         allocation_unit_kb   = 64
         iops                 = 3000
         mbps                 = 125
@@ -86,7 +82,6 @@ vms = {
         drive_letter         = "H"
         size_gb              = 4
         storage_account_type = "StandardSSD_LRS"
-        caching              = "None"
         allocation_unit_kb   = 64
       },
     ]

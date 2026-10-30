@@ -34,8 +34,9 @@ $letterCode = [int][char]$OpticalDriveLetter.ToUpper()
 foreach ($volume in @(Get-CimInstance -ClassName Win32_Volume -Filter 'DriveType = 5')) {
     $target = "$([char]$letterCode):"
     if ($volume.DriveLetter -ne $target) {
+        $oldLetter = $volume.DriveLetter # Set-CimInstance updates $volume in place, so save it first
         Set-CimInstance -InputObject $volume -Property @{ DriveLetter = $target }
-        Write-Output "Optical drive $($volume.DriveLetter) moved to $target"
+        Write-Output "Optical drive $oldLetter moved to $target"
     }
     $letterCode--
 }
@@ -52,7 +53,7 @@ foreach ($entry in $layout) {
     }
     $disk = Get-Disk -Number $match[0].Index
 
-    if ($disk.IsOffline)  { Set-Disk -Number $disk.Number -IsOffline $false }
+    if ($disk.IsOffline) { Set-Disk -Number $disk.Number -IsOffline $false }
     if ($disk.IsReadOnly) { Set-Disk -Number $disk.Number -IsReadOnly $false }
 
     if ($disk.PartitionStyle -eq 'RAW') {
@@ -76,7 +77,7 @@ foreach ($entry in $layout) {
         -AllocationUnitSize ($entry.allocationUnitKb * 1KB) -Confirm:$false | Out-Null
 
     Write-Output ("LUN {0}: {1}: '{2}' formatted NTFS, {3} KB allocation units" -f `
-        $entry.lun, $entry.driveLetter, $entry.label, $entry.allocationUnitKb)
+            $entry.lun, $entry.driveLetter, $entry.label, $entry.allocationUnitKb)
 }
 
 # --- 3. Extend C: if the OS disk was resized larger than the image --------------
@@ -89,6 +90,6 @@ if (($maxSize - $current) -gt 1MB) {
 
 # --- Summary --------------------------------------------------------------------
 Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
-    Format-Table DriveLetter, FileSystemLabel, FileSystem, DriveType, AllocationUnitSize,
-        @{ n = 'SizeGB'; e = { [math]::Round($_.Size / 1GB, 1) } } -AutoSize |
-    Out-String -Width 200
+Format-Table DriveLetter, FileSystemLabel, FileSystem, DriveType, AllocationUnitSize,
+@{ n = 'SizeGB'; e = { [math]::Round($_.Size / 1GB, 1) } } -AutoSize |
+Out-String -Width 200

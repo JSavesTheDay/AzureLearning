@@ -50,14 +50,15 @@ variable "auto_shutdown_timezone" {
   default     = "Central Standard Time"
 }
 
-# One entry per VM, keyed by VM name. Each data disk sets its LUN explicitly, so
-# reordering or inserting disks never renumbers others. The setup script uses
-# the LUN to find each disk in Windows.
+# One entry per VM, keyed by VM name. Each entry is passed to modules/windows-vm,
+# which owns the defaults (caching "None", 4 KB allocation units) and all disk
+# validation. Optional attributes left unset here arrive as null, and the module
+# replaces them with its defaults.
 variable "vms" {
-  description = "VMs to create, keyed by VM name."
+  description = "VMs to create, keyed by VM name. See modules/windows-vm/variables.tf for rules."
   type = map(object({
     size = string
-    zone = optional(string) # required when any data disk is PremiumV2_LRS
+    zone = optional(string)
 
     os_disk = object({
       size_gb              = number
@@ -65,110 +66,15 @@ variable "vms" {
     })
 
     data_disks = optional(list(object({
-      lun                  = number # 0-63; convention here: sequential in drive-letter order
-      label                = string # NTFS volume label, also used in the Azure disk name
+      lun                  = number
+      label                = string
       drive_letter         = string
       size_gb              = number
       storage_account_type = string
-      caching              = optional(string, "None")
-      allocation_unit_kb   = optional(number, 4) # use 64 for SQL Server data, log, tempdb, and backup volumes
-
-      # Premium SSD v2 only: performance is set independently of size.
-      # Unset = free baseline (3,000 IOPS / 125 MB/s). Higher values add cost.
-      iops = optional(number)
-      mbps = optional(number)
+      caching              = optional(string)
+      allocation_unit_kb   = optional(number)
+      iops                 = optional(number)
+      mbps                 = optional(number)
     })), [])
   }))
-
-  validation {
-    condition     = alltrue([for name in keys(var.vms) : length(name) <= 15])
-    error_message = "VM names must be 15 characters or fewer (Windows computer name limit)."
-  }
-
-  validation {
-    condition = alltrue(flatten([
-      for vm in values(var.vms) : [for d in vm.data_disks : can(regex("^[D-Y]$", d.drive_letter))]
-    ]))
-    error_message = "Data disk drive letters must be a single uppercase letter from D to Y (C is the OS, Z is reserved for optical drives)."
-  }
-
-  validation {
-    condition = alltrue([
-      for vm in values(var.vms) :
-      length(distinct([for d in vm.data_disks : d.drive_letter])) == length(vm.data_disks) &&
-      length(distinct([for d in vm.data_disks : lower(d.label)])) == length(vm.data_disks)
-    ])
-    error_message = "Drive letters and labels must be unique within each VM."
-  }
-
-  validation {
-    condition = alltrue([
-      for vm in values(var.vms) :
-      length(distinct([for d in vm.data_disks : d.lun])) == length(vm.data_disks) &&
-      alltrue([for d in vm.data_disks : d.lun >= 0 && d.lun <= 63 && floor(d.lun) == d.lun])
-    ])
-    error_message = "Each data disk needs a unique whole-number lun from 0 to 63 within its VM."
-  }
-
-  validation {
-    condition = alltrue(flatten([
-      for vm in values(var.vms) : [
-        for d in vm.data_disks : contains(["Standard_LRS", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS"], d.storage_account_type)
-      ]
-    ]))
-    error_message = "storage_account_type must be Standard_LRS, StandardSSD_LRS, Premium_LRS, or PremiumV2_LRS."
-  }
-
-  validation {
-    condition = alltrue(flatten([
-      for vm in values(var.vms) : [
-        for d in vm.data_disks : d.storage_account_type != "PremiumV2_LRS" || (vm.zone != null && d.caching == "None")
-      ]
-    ]))
-    error_message = "PremiumV2_LRS disks require the VM to have a zone and caching = \"None\" (no host caching support)."
-  }
-
-  validation {
-    condition = alltrue(flatten([
-      for vm in values(var.vms) : [for d in vm.data_disks : contains([4, 8, 16, 32, 64], d.allocation_unit_kb)]
-    ]))
-    error_message = "allocation_unit_kb must be 4, 8, 16, 32, or 64."
-  }
-
-  validation {
-    condition = alltrue(flatten([
-      for vm in values(var.vms) : [
-        for d in vm.data_disks : (d.iops == null && d.mbps == null) || d.storage_account_type == "PremiumV2_LRS"
-      ]
-    ]))
-    error_message = "iops and mbps can only be set on PremiumV2_LRS disks."
-  }
-
-  # Premium SSD v2 IOPS: 3,000 baseline; max = 500 per GiB (never below 3,000), capped at 80,000.
-  # coalesce() substitutes the baseline for unset values, so no comparison ever sees null.
-  validation {
-    condition = alltrue(flatten([
-      for vm in values(var.vms) : [
-        for d in vm.data_disks :
-        floor(coalesce(d.iops, 3000)) == coalesce(d.iops, 3000) &&
-        coalesce(d.iops, 3000) >= 3000 &&
-        coalesce(d.iops, 3000) <= min(80000, max(3000, 500 * d.size_gb))
-      ]
-    ]))
-    error_message = "Premium SSD v2 iops must be a whole number from 3000 to min(80000, max(3000, 500 x size_gb))."
-  }
-
-  # Premium SSD v2 throughput: 125 MB/s baseline. Disks of 6 GiB or less stay at 125.
-  # Larger disks allow up to 0.25 MB/s per provisioned IOPS, capped at 2,000.
-  validation {
-    condition = alltrue(flatten([
-      for vm in values(var.vms) : [
-        for d in vm.data_disks :
-        floor(coalesce(d.mbps, 125)) == coalesce(d.mbps, 125) &&
-        coalesce(d.mbps, 125) >= 125 &&
-        coalesce(d.mbps, 125) <= (d.size_gb <= 6 ? 125 : min(2000, max(125, 0.25 * coalesce(d.iops, 3000))))
-      ]
-    ]))
-    error_message = "Premium SSD v2 mbps must be a whole number from 125 up to 0.25 x iops (max 2000); disks of 6 GiB or less are fixed at 125."
-  }
 }

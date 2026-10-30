@@ -2,7 +2,16 @@
 
 Deploys the Windows Server 2025 VMs listed in [terraform.tfvars](terraform.tfvars). Each VM's OS disk, data disks, drive letters and volume labels are configured there. A one-time in-guest script formats the disks and assigns their letters.
 
-**What it demonstrates:** a typed `map(object)` variable with `optional()` defaults and validation; flattening nested collections for `for_each`; zonal Premium SSD v2; managed Run Command; and Microsoft's SQL-on-VM disk guidance.
+**What it demonstrates:** a local child module called with `for_each`; typed `optional()` defaults and validation owned by the module; zonal Premium SSD v2; managed Run Command; and Microsoft's SQL-on-VM disk guidance.
+
+## Structure
+
+| Path | Holds |
+|---|---|
+| `main.tf` | Shared resources (resource group, VNet, subnet, NSG, admin password) and the `module "vm"` call, one instance per entry in `vms` |
+| `modules/windows-vm/` | Everything for one VM: public IP, NIC, VM, data disks and attachments, disk setup Run Command, auto-shutdown. Owns the data disk defaults and validation. |
+| `modules/windows-vm/scripts/Initialize-DataDisks.ps1` | One-time in-guest disk setup, run by the module |
+| `scripts/Get-DriveInventory.ps1` | Read-only drive snapshot you run yourself (see below) |
 
 ## Layout
 
@@ -52,6 +61,12 @@ Check the disk setup output without RDP:
 az vm run-command show --resource-group rg-lab-eastus2 --vm-name db01 --name initialize-data-disks --instance-view --query instanceView.output --output tsv
 ```
 
+Snapshot disks, volumes, letter reservations and pagefile (read-only):
+
+```powershell
+az vm run-command invoke --resource-group rg-lab-eastus2 --name db01 --command-id RunPowerShellScript --scripts '@scripts\Get-DriveInventory.ps1'
+```
+
 Tear down (stops all charges):
 
 ```powershell
@@ -60,7 +75,7 @@ terraform destroy
 
 ## Adding or changing VMs
 
-Edit `terraform.tfvars`. Each data disk sets its `lun` explicitly (0–63, unique per VM). The convention is sequential in drive-letter order. Because LUNs are explicit, list order doesn't matter, and adding a disk never renumbers the others. Changing an *existing* disk's LUN detaches and reattaches it, so treat LUNs as fixed once deployed.
+Edit `terraform.tfvars`. Leave out `caching` and `allocation_unit_kb` when they match the module defaults (`None`, 4 KB). Each data disk sets its `lun` explicitly (0–63, unique per VM). The convention is sequential in drive-letter order. Because LUNs are explicit, list order doesn't matter, and adding a disk never renumbers the others. Changing an *existing* disk's LUN detaches and reattaches it, so treat LUNs as fixed once deployed.
 
 ## Notes
 
