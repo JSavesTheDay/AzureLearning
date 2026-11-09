@@ -57,8 +57,20 @@ variable "auto_shutdown_timezone" {
 variable "vms" {
   description = "VMs to create, keyed by VM name. See modules/windows-vm/variables.tf for rules."
   type = map(object({
-    size = string
-    zone = optional(string)
+    size       = string
+    zone       = optional(string)
+    patch_mode = optional(string)
+
+    source_image = optional(object({
+      publisher = string
+      offer     = string
+      sku       = string
+      version   = optional(string)
+    }))
+
+    sql_server = optional(object({
+      tempdb_path = optional(string)
+    }))
 
     os_disk = object({
       size_gb              = number
@@ -75,6 +87,7 @@ variable "vms" {
       allocation_unit_kb   = optional(number)
       iops                 = optional(number)
       mbps                 = optional(number)
+      sql_role             = optional(string)
     })), [])
   }))
 }

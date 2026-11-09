@@ -20,7 +20,7 @@
 param(
     [Parameter(Mandatory)]
     [string] $DiskLayoutBase64,
-
+    [ValidatePattern('^[A-Z]$')]
     [string] $OpticalDriveLetter = 'Z'
 )
 
@@ -42,9 +42,12 @@ foreach ($volume in @(Get-CimInstance -ClassName Win32_Volume -Filter 'DriveType
 }
 
 # --- 2. Initialize, format, and letter each data disk by LUN --------------------
-# The OS disk is also LUN 0 (on a different controller), so exclude boot/system disks first.
+# Data disks have their own SCSI controller. The OS disk (LUN 0) and any temp disk
+# share a different one, so keep only disks that aren't on the boot disk's controller.
 $systemDiskNumbers = @(Get-Disk | Where-Object { $_.IsBoot -or $_.IsSystem } | ForEach-Object Number)
-$dataDisks = @(Get-CimInstance -ClassName Win32_DiskDrive | Where-Object { $systemDiskNumbers -notcontains $_.Index })
+$allDisks = @(Get-CimInstance -ClassName Win32_DiskDrive)
+$bootPort = ($allDisks | Where-Object { $systemDiskNumbers -contains $_.Index } | Select-Object -First 1).SCSIPort
+$dataDisks = @($allDisks | Where-Object SCSIPort -ne $bootPort)
 
 foreach ($entry in $layout) {
     $match = @($dataDisks | Where-Object SCSILogicalUnit -eq $entry.lun)

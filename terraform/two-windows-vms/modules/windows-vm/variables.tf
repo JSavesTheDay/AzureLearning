@@ -37,6 +37,48 @@ variable "zone" {
   default     = null
 }
 
+# nullable = false: a caller passing null gets the default instead of null.
+variable "source_image" {
+  description = "Marketplace image. Defaults to Windows Server 2025 Datacenter: Azure Edition."
+  type = object({
+    publisher = string
+    offer     = string
+    sku       = string
+    version   = optional(string, "latest")
+  })
+  nullable = false
+  default = {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2025-datacenter-azure-edition"
+  }
+}
+
+# AutomaticByPlatform (Azure orchestrates patching with health checks) supports
+# only some images: https://aka.ms/VMGuestPatchingCompatibility
+# SQL Server images aren't on the list and need AutomaticByOS (Windows Update).
+variable "patch_mode" {
+  description = "Guest OS patching: AutomaticByPlatform, AutomaticByOS, or Manual."
+  type        = string
+  nullable    = false
+  default     = "AutomaticByPlatform"
+
+  validation {
+    condition     = contains(["AutomaticByPlatform", "AutomaticByOS", "Manual"], var.patch_mode)
+    error_message = "patch_mode must be AutomaticByPlatform, AutomaticByOS, or Manual."
+  }
+}
+
+# Set only for a SQL Server image. Puts tempdb on the temp disk (D:), where a startup
+# task re-creates the folders and permissions after the disk is wiped.
+variable "sql_server" {
+  description = "SQL Server settings. null = not a SQL Server VM."
+  type = object({
+    tempdb_path = optional(string, "D:\\tempDb")
+  })
+  default = null
+}
+
 variable "admin_username" {
   description = "Local administrator username."
   type        = string
@@ -73,8 +115,27 @@ variable "data_disks" {
     # Unset = free baseline (3,000 IOPS / 125 MB/s). Higher values add cost.
     iops = optional(number)
     mbps = optional(number)
+
+    # "data", "log" or "backup": makes <drive_letter>:\Data, \Log or \Backup SQL
+    # Server's default folder for that role (Set-SqlDefaultPaths.ps1).
+    sql_role = optional(string)
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for d in var.data_disks : d.sql_role == null || (contains(["data", "log", "backup"], coalesce(d.sql_role, "none")) && var.sql_server != null)
+    ])
+    error_message = "sql_role must be \"data\", \"log\" or \"backup\", and only on a SQL Server VM (sql_server set)."
+  }
+
+  # SQL Server has one default folder per role.
+  validation {
+    condition = alltrue([
+      for role in ["data", "log", "backup"] : length([for d in var.data_disks : d if d.sql_role == role]) <= 1
+    ])
+    error_message = "At most one data disk per sql_role."
+  }
 
   validation {
     condition     = alltrue([for d in var.data_disks : can(regex("^[D-Y]$", d.drive_letter))])

@@ -46,9 +46,9 @@ resource "azurerm_windows_virtual_machine" "this" {
   secure_boot_enabled = true
   vtpm_enabled        = true
 
-  # Azure applies OS patches during off-peak hours, with health checks.
-  patch_mode                = "AutomaticByPlatform"
-  automatic_updates_enabled = true
+  # AutomaticByPlatform: Azure applies OS patches during off-peak hours, with health checks.
+  patch_mode                = var.patch_mode
+  automatic_updates_enabled = var.patch_mode != "Manual"
 
   os_disk {
     caching              = "ReadWrite" # Microsoft's default for OS disks; don't change it
@@ -56,13 +56,13 @@ resource "azurerm_windows_virtual_machine" "this" {
     disk_size_gb         = var.os_disk.size_gb
   }
 
-  # Full-size image (127 GB OS disk), which can grow to the 128 GB requested.
+  # Use full-size images (127 GB OS disk), which can grow to the size requested.
   # The -smalldisk images start at 30 GB.
   source_image_reference {
-    publisher = "MicrosoftWindowsServer"
-    offer     = "WindowsServer"
-    sku       = "2025-datacenter-azure-edition"
-    version   = "latest"
+    publisher = var.source_image.publisher
+    offer     = var.source_image.offer
+    sku       = var.source_image.sku
+    version   = var.source_image.version
   }
 
   # Managed boot diagnostics (no storage account needed): lets you see the
@@ -139,6 +139,80 @@ resource "azurerm_virtual_machine_run_command" "disk_setup" {
 
   # All disks must be attached before the script looks for them.
   depends_on = [azurerm_virtual_machine_data_disk_attachment.data]
+}
+
+# --- SQL Server default folders (SQL Server images only) ------------------------
+
+locals {
+  # Folder for each sql_role, on that disk's volume. null when no disk has the role.
+  sql_paths = {
+    for role, folder in { data = "Data", log = "Log", backup = "Backup" } :
+    role => one([for d in var.data_disks : "${d.drive_letter}:\\${folder}" if d.sql_role == role])
+  }
+}
+
+# A second one-time Run Command: after the disks are formatted, point SQL Server's
+# default data, log and backup folders at them.
+resource "azurerm_virtual_machine_run_command" "sql_default_paths" {
+  count = var.run_disk_setup && var.sql_server != null && anytrue([for d in var.data_disks : d.sql_role != null]) ? 1 : 0
+
+  name               = "set-sql-default-paths"
+  location           = var.location
+  virtual_machine_id = azurerm_windows_virtual_machine.this.id
+  tags               = var.tags
+
+  source {
+    script = file("${path.module}/scripts/Set-SqlDefaultPaths.ps1")
+  }
+
+  # One parameter per role that has a disk (DataPath, LogPath, BackupPath).
+  # dynamic emits a block per map entry; roles without a disk are filtered out.
+  dynamic "parameter" {
+    for_each = { for role, path in local.sql_paths : role => path if path != null }
+    content {
+      name  = "${title(parameter.key)}Path"
+      value = parameter.value
+    }
+  }
+
+  # The volumes must exist, and Run Commands on one VM run one at a time.
+  depends_on = [azurerm_virtual_machine_run_command.disk_setup]
+}
+
+# --- tempdb on the temp disk (SQL Server images only) ----------------------------
+
+# A third one-time Run Command: moves tempdb to the temp disk and installs a startup
+# task, because the temp disk comes back empty after deallocation. The script's
+# default of 8 data files follows Microsoft's guidance of one per vCPU, up to 8,
+# for target sizes with 8 or more vCPUs.
+resource "azurerm_virtual_machine_run_command" "sql_tempdb" {
+  count = var.run_disk_setup && var.sql_server != null ? 1 : 0
+
+  name               = "set-sql-tempdb"
+  location           = var.location
+  virtual_machine_id = azurerm_windows_virtual_machine.this.id
+  tags               = var.tags
+
+  source {
+    script = file("${path.module}/scripts/Set-SqlTempDb.ps1")
+  }
+
+  parameter {
+    name  = "StartupScriptBase64"
+    value = filebase64("${path.module}/scripts/Start-SqlOnTempDisk.ps1")
+  }
+
+  parameter {
+    name  = "TempDbPath"
+    value = var.sql_server.tempdb_path
+  }
+
+  # Run Commands are VM extensions. Azure rejects concurrent extension operations
+  # on one VM, and both of these restart SQL Server, so run them one after another.
+  depends_on = [
+    azurerm_virtual_machine_run_command.disk_setup,
+    azurerm_virtual_machine_run_command.sql_default_paths,
+  ]
 }
 
 # Daily auto-shutdown: a safety net for Pay-As-You-Go cost.

@@ -88,10 +88,13 @@ module "vm" {
   subnet_id           = azurerm_subnet.vms.id
   tags                = local.tags
 
-  size       = each.value.size
-  zone       = each.value.zone
-  os_disk    = each.value.os_disk
-  data_disks = each.value.data_disks
+  size         = each.value.size
+  zone         = each.value.zone
+  patch_mode   = each.value.patch_mode
+  source_image = each.value.source_image
+  os_disk      = each.value.os_disk
+  data_disks   = each.value.data_disks
+  sql_server   = each.value.sql_server
 
   admin_username = var.admin_username
   admin_password = random_password.admin.result
